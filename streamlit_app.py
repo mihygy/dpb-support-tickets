@@ -162,17 +162,20 @@ def main_app():
             stats_col1, stats_col2, stats_col3, stats_col4 = st.columns(4)
             
             total_tickets = len(st.session_state.tickets)
-            responded_tickets = len([t for t in st.session_state.tickets if t.get("support_response_at")])
+            
+            # Calculate based on exchanges
+            total_exchanges = sum(len(t.get("exchanges", [])) for t in st.session_state.tickets)
+            answered_exchanges = sum(len([e for e in t.get("exchanges", []) if e.get("response_at")]) for t in st.session_state.tickets)
+            pending_exchanges = total_exchanges - answered_exchanges
             
             with stats_col1:
                 st.metric("Gesamt Tickets", total_tickets)
             
             with stats_col2:
-                st.metric("Support antwortet", responded_tickets)
+                st.metric("Beantwortete Fragen", answered_exchanges)
             
             with stats_col3:
-                pending_tickets = len([t for t in st.session_state.tickets if not t.get("support_response_at")])
-                st.metric("Noch ohne Antwort", pending_tickets)
+                st.metric("Ausstehende Fragen", pending_exchanges)
             
             # Calculate average response time
             response_times = []
@@ -203,19 +206,19 @@ def main_app():
             # Chart 1: Response Status (Pie Chart)
             with chart_col1:
                 response_data = pd.DataFrame({
-                    "Status": ["Mit Antwort", "Ohne Antwort"],
-                    "Anzahl": [responded_tickets, pending_tickets]
+                    "Status": ["Beantwortet", "Ausstehend"],
+                    "Anzahl": [answered_exchanges, pending_exchanges]
                 })
                 
                 pie_chart = alt.Chart(response_data).mark_arc().encode(
                     theta="Anzahl",
                     color=alt.Color("Status:N", scale=alt.Scale(
-                        domain=["Mit Antwort", "Ohne Antwort"],
+                        domain=["Beantwortet", "Ausstehend"],
                         range=["#4CAF50", "#FF9800"]
                     )),
                     tooltip=["Status", "Anzahl"]
                 ).properties(
-                    title="Support-Antworten Status",
+                    title="Fragen-Antwort Status (Exchange-basiert)",
                     height=300
                 )
                 st.altair_chart(pie_chart, use_container_width=True)
@@ -426,7 +429,11 @@ def main_app():
                 filtered_tickets = [t for t in filtered_tickets 
                                   if search_text.lower() in t["title"].lower() or search_text.lower() in t["description"].lower()]
             
-            st.markdown(f"**Angezeigte Tickets: {len(filtered_tickets)} / {len(st.session_state.tickets)}**")
+            # Count filtered exchanges
+            filtered_total_exchanges = sum(len(t.get("exchanges", [])) for t in filtered_tickets)
+            filtered_answered_exchanges = sum(len([e for e in t.get("exchanges", []) if e.get("response_at")]) for t in filtered_tickets)
+            
+            st.markdown(f"**Angezeigte Tickets: {len(filtered_tickets)} / {len(st.session_state.tickets)}** | **Fragen: {filtered_answered_exchanges}/{filtered_total_exchanges}**")
             st.markdown("---")
             
             # Display tickets based on view mode
@@ -625,7 +632,7 @@ def main_app():
         
         # Tab 3: Advanced Statistics
         with tab3:
-            st.markdown("### 📊 Erweiterte Statistiken")
+            st.markdown("### 📊 Erweiterte Statistiken (Exchange-basiert)")
             
             if not st.session_state.tickets:
                 st.info("Keine Daten für Statistiken verfügbar.")
@@ -633,25 +640,76 @@ def main_app():
                 # Gesamtstatistiken
                 st.markdown("#### 📌 Gesamt-Gesprächsmetriken")
                 
-                total_questions = sum(len(t.get("exchanges", [])) for t in st.session_state.tickets)
-                total_answered = sum(len([e for e in t.get("exchanges", []) if e.get("response_at")]) for t in st.session_state.tickets)
+                total_all_exchanges = sum(len(t.get("exchanges", [])) for t in st.session_state.tickets)
+                total_all_answered = sum(len([e for e in t.get("exchanges", []) if e.get("response_at")]) for t in st.session_state.tickets)
                 
                 metric_col1, metric_col2, metric_col3 = st.columns(3)
                 
                 with metric_col1:
-                    st.metric("Gesamt Fragen", total_questions)
+                    st.metric("Gesamt Fragen", total_all_exchanges)
                 
                 with metric_col2:
-                    st.metric("Beantwortete Fragen", total_answered)
+                    st.metric("Beantwortete Fragen", total_all_answered)
                 
                 with metric_col3:
-                    pending_q = total_questions - total_answered
-                    st.metric("Ausstehend", pending_q)
+                    pending_all = total_all_exchanges - total_all_answered
+                    st.metric("Ausstehend", pending_all)
                 
                 st.markdown("---")
                 
+                # Response distribution pie chart for all exchanges
+                st.markdown("#### 📊 Gesamte Fragen-Antwort Verteilung")
+                
+                col_pie1, col_pie2 = st.columns(2)
+                
+                with col_pie1:
+                    response_dist = pd.DataFrame({
+                        "Status": ["Beantwortet", "Ausstehend"],
+                        "Anzahl": [total_all_answered, pending_all]
+                    })
+                    
+                    dist_pie = alt.Chart(response_dist).mark_arc().encode(
+                        theta="Anzahl",
+                        color=alt.Color("Status:N", scale=alt.Scale(
+                            domain=["Beantwortet", "Ausstehend"],
+                            range=["#4CAF50", "#FF9800"]
+                        )),
+                        tooltip=["Status", "Anzahl"]
+                    ).properties(
+                        title="Alle Fragen Status",
+                        height=300
+                    )
+                    st.altair_chart(dist_pie, use_container_width=True)
+                
                 # Daily trends
-                st.markdown("#### 📈 Tägliche Trends")
+                with col_pie2:
+                    st.markdown("#### 📈 Tägliche Fragen")
+                    
+                    daily_questions = {}
+                    for ticket in st.session_state.tickets:
+                        for exchange in ticket.get("exchanges", []):
+                            date = exchange["question_at"][:10]
+                            daily_questions[date] = daily_questions.get(date, 0) + 1
+                    
+                    daily_q_df = pd.DataFrame({
+                        "Datum": list(daily_questions.keys()),
+                        "Fragen": list(daily_questions.values())
+                    })
+                    
+                    if not daily_q_df.empty:
+                        line_chart = alt.Chart(daily_q_df).mark_line(point=True).encode(
+                            x="Datum:T",
+                            y="Fragen:Q",
+                            tooltip=["Datum", "Fragen"]
+                        ).properties(
+                            title="Fragen pro Tag",
+                            height=300
+                        )
+                        st.altair_chart(line_chart, use_container_width=True)
+                
+                st.markdown("---")
+                
+                st.markdown("#### ⏱️ Durchschnittliche Antwortzeit pro Priorität (Exchange-basiert)")
                 
                 daily_data = {}
                 for ticket in st.session_state.tickets:
@@ -673,9 +731,6 @@ def main_app():
                         height=300
                     )
                     st.altair_chart(line_chart, use_container_width=True)
-                
-                # Response rate by priority
-                st.markdown("#### ⏱️ Durchschnittliche Antwortzeit pro Priorität")
                 
                 priority_response_times = {}
                 priority_counts = {}
@@ -722,7 +777,7 @@ def main_app():
                     st.altair_chart(priority_bar, use_container_width=True)
                 
                 # Response rate by category
-                st.markdown("#### 📂 Response Rate nach Kategorie")
+                st.markdown("#### 📂 Response Rate nach Kategorie (Exchange-basiert)")
                 
                 category_stats = {}
                 for category in st.session_state.settings["categories"]:
