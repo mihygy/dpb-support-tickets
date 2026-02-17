@@ -1,154 +1,169 @@
-import datetime
-import random
-from PIL import Image
-from io import BytesIO
-import requests
-
-import altair as alt
-import numpy as np
-import pandas as pd
 import streamlit as st
+import json
+import os
+from datetime import datetime
+from pathlib import Path
 
-# Show app title and description.
-st.set_page_config(page_title="RailCube Support-Tickets", page_icon="🚂")
-
-# Layout für Logo und Titel
-col1, col2 = st.columns([1, 4])
-with col1:
-    st.image("RAILCUBE-LOGO.png", width=100)
-with col2:
-    st.title("RailCube Support-Tickets")
-
-st.write(
-    """
-    RailCube-Anwendung Support-Ticket-Manager. Hier können Sie Support-Anfragen 
-    für RailCube verwalten, bestehende Tickets bearbeiten und Statistiken anzeigen.
-    """
+# Page config
+st.set_page_config(
+    page_title="DPB Support-Tickets",
+    page_icon="🎫",
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
-# Create a random Pandas dataframe with existing tickets.
-if "df" not in st.session_state:
+# Initialize session state
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
 
-    # Create empty dataframe with column structure
-    data = {
-        "ID": [],
-        "Issue": [],
-        "Status": [],
-        "Priority": [],
-        "Date Submitted": [],
-    }
-    df = pd.DataFrame(data)
+if "tickets" not in st.session_state:
+    st.session_state.tickets = []
 
-    # Save the dataframe in session state (a dictionary-like object that persists across
-    # page runs). This ensures our data is persisted when the app updates.
-    st.session_state.df = df
+# File for persistent storage
+TICKETS_FILE = "tickets.json"
 
+def load_tickets():
+    """Load tickets from JSON file"""
+    if os.path.exists(TICKETS_FILE):
+        try:
+            with open(TICKETS_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except:
+            return []
+    return []
 
-# Show a section to add a new ticket.
-st.header("Neues Support-Ticket hinzufügen")
+def save_tickets(tickets):
+    """Save tickets to JSON file"""
+    with open(TICKETS_FILE, "w", encoding="utf-8") as f:
+        json.dump(tickets, f, ensure_ascii=False, indent=2)
+    st.session_state.tickets = tickets
 
-# We're adding tickets via an `st.form` and some input widgets. If widgets are used
-# in a form, the app will only rerun once the submit button is pressed.
-with st.form("add_ticket_form"):
-    issue = st.text_area("Beschreiben Sie das RailCube-Problem")
-    priority = st.selectbox("Priorität", ["Hoch", "Mittel", "Niedrig"])
-    submitted = st.form_submit_button("Absenden")
+def login_page():
+    """Login page with Railcube branding"""
+    col1, col2, col3 = st.columns([1, 2, 1])
+    
+    with col2:
+        st.markdown("<h1 style='text-align: center;'>🚆 Railcube</h1>", unsafe_allow_html=True)
+        st.markdown("<h2 style='text-align: center; color: #888;'>Support-Tickets System</h2>", unsafe_allow_html=True)
+        st.markdown("---")
+        
+        password = st.text_input("🔐 Masterkennwort", type="password", key="login_password")
+        
+        if st.button("🔓 Anmelden", use_container_width=True):
+            if password == "rail26dpb#":
+                st.session_state.logged_in = True
+                st.session_state.tickets = load_tickets()
+                st.success("✅ Erfolgreich angemeldet!")
+                st.rerun()
+            else:
+                st.error("❌ Falsches Kennwort!")
+        
+        st.markdown("---")
+        st.markdown("<p style='text-align: center; color: #888; font-size: 12px;'>DPB Support System</p>", unsafe_allow_html=True)
 
-if submitted:
-    # Make a dataframe for the new ticket and append it to the dataframe in session
-    # state.
-    if len(st.session_state.df) > 0:
-        recent_ticket_number = int(max(st.session_state.df.ID).split("-")[1])
-    else:
-        recent_ticket_number = 0
-    today = datetime.datetime.now().strftime("%m-%d-%Y")
-    df_new = pd.DataFrame(
-        [
-            {
-                "ID": f"TICKET-{recent_ticket_number+1}",
-                "Issue": issue,
-                "Status": "Offen",
-                "Priority": priority,
-                "Date Submitted": today,
-            }
-        ]
-    )
+def main_app():
+    """Main application"""
+    # Sidebar
+    st.sidebar.markdown("# 🎫 Support-Tickets")
+    st.sidebar.markdown("---")
+    
+    if st.sidebar.button("🚪 Abmelden", use_container_width=True):
+        st.session_state.logged_in = False
+        st.session_state.tickets = []
+        st.rerun()
+    
+    st.sidebar.markdown("---")
+    
+    # Main content
+    st.markdown("<h1>🎫 Support-Tickets System</h1>", unsafe_allow_html=True)
+    
+    # Tabs for different sections
+    tab1, tab2 = st.tabs(["➕ Neues Ticket", "📋 Tickets"])
+    
+    # Tab 1: Add new ticket
+    with tab1:
+        st.markdown("### Neues Support-Ticket erstellen")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            title = st.text_input("Titel", placeholder="Ticket-Titel")
+            priority = st.selectbox("Priorität", ["🟢 Niedrig", "🟡 Mittel", "🔴 Hoch"])
+        
+        with col2:
+            category = st.selectbox("Kategorie", ["Bug", "Feature Request", "Support", "Dokumentation", "Sonstiges"])
+            status = st.selectbox("Status", ["Offen", "In Bearbeitung", "Gelöst"])
+        
+        description = st.text_area("Beschreibung", placeholder="Geben Sie die Ticket-Beschreibung ein", height=150)
+        
+        if st.button("💾 Ticket speichern", use_container_width=True):
+            if title and description:
+                new_ticket = {
+                    "id": len(st.session_state.tickets) + 1,
+                    "title": title,
+                    "description": description,
+                    "category": category,
+                    "priority": priority,
+                    "status": status,
+                    "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                }
+                st.session_state.tickets.append(new_ticket)
+                save_tickets(st.session_state.tickets)
+                st.success("✅ Ticket erfolgreich erstellt!")
+                st.rerun()
+            else:
+                st.error("❌ Bitte füllen Sie alle erforderlichen Felder aus!")
+    
+    # Tab 2: View and manage tickets
+    with tab2:
+        st.markdown("### Ticket-Liste")
+        
+        if not st.session_state.tickets:
+            st.info("📭 Keine Tickets vorhanden. Erstellen Sie ein neues im Tab 'Neues Ticket'!")
+        else:
+            # Filter options
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                filter_status = st.selectbox("Nach Status filtern", ["Alle"] + ["Offen", "In Bearbeitung", "Gelöst"])
+            with col2:
+                filter_priority = st.selectbox("Nach Priorität filtern", ["Alle", "🟢 Niedrig", "🟡 Mittel", "🔴 Hoch"])
+            with col3:
+                filter_category = st.selectbox("Nach Kategorie filtern", ["Alle"] + ["Bug", "Feature Request", "Support", "Dokumentation", "Sonstiges"])
+            
+            # Apply filters
+            filtered_tickets = st.session_state.tickets
+            
+            if filter_status != "Alle":
+                filtered_tickets = [t for t in filtered_tickets if t["status"] == filter_status]
+            if filter_priority != "Alle":
+                filtered_tickets = [t for t in filtered_tickets if t["priority"] == filter_priority]
+            if filter_category != "Alle":
+                filtered_tickets = [t for t in filtered_tickets if t["category"] == filter_category]
+            
+            st.markdown(f"**Angezeigte Tickets: {len(filtered_tickets)} / {len(st.session_state.tickets)}**")
+            st.markdown("---")
+            
+            # Display tickets
+            for ticket in filtered_tickets:
+                with st.container(border=True):
+                    col1, col2 = st.columns([4, 1])
+                    
+                    with col1:
+                        st.markdown(f"### {ticket['title']}")
+                        st.write(f"**Kategorie:** {ticket['category']} | **Priorität:** {ticket['priority']} | **Status:** {ticket['status']}")
+                        st.write(f"*Erstellt: {ticket['created_at']}*")
+                        st.write(f"**Beschreibung:** {ticket['description']}")
+                    
+                    with col2:
+                        if st.button("🗑️ Löschen", key=f"delete_{ticket['id']}", use_container_width=True):
+                            st.session_state.tickets = [t for t in st.session_state.tickets if t["id"] != ticket["id"]]
+                            save_tickets(st.session_state.tickets)
+                            st.success("✅ Ticket erfolgreich gelöscht!")
+                            st.rerun()
 
-    # Show a little success message.
-    st.write("Ticket erfolgreich eingereicht! Ticket-Details:")
-    st.dataframe(df_new, use_container_width=True, hide_index=True)
-    st.session_state.df = pd.concat([df_new, st.session_state.df], axis=0)
-
-# Show section to view and edit existing tickets in a table.
-st.header("Bestehende Tickets")
-st.write(f"Anzahl der Tickets: `{len(st.session_state.df)}`")
-
-st.info(
-    "Sie können Tickets durch Doppelklick auf eine Zelle bearbeiten. Beobachten Sie, wie sich die "
-    "Diagramme unten automatisch aktualisieren! Sie können die Tabelle durch Klick auf die Spaltenüberschriften sortieren.",
-    icon="✍️",
-)
-
-# Show the tickets dataframe with `st.data_editor`. This lets the user edit the table
-# cells. The edited data is returned as a new dataframe.
-edited_df = st.data_editor(
-    st.session_state.df,
-    use_container_width=True,
-    hide_index=True,
-    column_config={
-        "Status": st.column_config.SelectboxColumn(
-            "Status",
-            help="Ticket-Status",
-            options=["Offen", "In Bearbeitung", "Geschlossen"],
-            required=True,
-        ),
-        "Priority": st.column_config.SelectboxColumn(
-            "Priorität",
-            help="Priorität",
-            options=["Hoch", "Mittel", "Niedrig"],
-            required=True,
-        ),
-    },
-    # Disable editing the ID and Date Submitted columns.
-    disabled=["ID", "Date Submitted"],
-)
-
-# Show some metrics and charts about the ticket.
-st.header("Statistiken")
-
-# Show metrics side by side using `st.columns` and `st.metric`.
-col1, col2, col3 = st.columns(3)
-num_open_tickets = len(st.session_state.df[st.session_state.df.Status == "Offen"])
-col1.metric(label="Anzahl offener Tickets", value=num_open_tickets, delta=10)
-col2.metric(label="Erste Antwortzeit (Stunden)", value=5.2, delta=-1.5)
-col3.metric(label="Durchschnittliche Lösungszeit (Stunden)", value=16, delta=2)
-
-# Show two Altair charts using `st.altair_chart`.
-st.write("")
-st.write("##### Ticket-Status pro Monat")
-status_plot = (
-    alt.Chart(edited_df)
-    .mark_bar()
-    .encode(
-        x="month(Date Submitted):O",
-        y="count():Q",
-        xOffset="Status:N",
-        color="Status:N",
-    )
-    .configure_legend(
-        orient="bottom", titleFontSize=14, labelFontSize=14, titlePadding=5
-    )
-)
-st.altair_chart(status_plot, use_container_width=True, theme="streamlit")
-
-st.write("##### Aktuelle Ticket-Prioritäten")
-priority_plot = (
-    alt.Chart(edited_df)
-    .mark_arc()
-    .encode(theta="count():Q", color="Priority:N")
-    .properties(height=300)
-    .configure_legend(
-        orient="bottom", titleFontSize=14, labelFontSize=14, titlePadding=5
-    )
-)
-st.altair_chart(priority_plot, use_container_width=True, theme="streamlit")
+# Main logic
+if st.session_state.logged_in:
+    main_app()
+else:
+    login_page()
