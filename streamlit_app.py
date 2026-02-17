@@ -51,7 +51,7 @@ def login_page():
         
         password = st.text_input("🔐 Masterkennwort", type="password", key="login_password")
         
-        if st.button("🔓 Anmelden", use_container_width=True):
+        if st.button("🔓 Anmelden", width='stretch'):
             if password == "rail26dpb#":
                 st.session_state.logged_in = True
                 st.session_state.tickets = load_tickets()
@@ -69,7 +69,7 @@ def main_app():
     st.sidebar.markdown("# 🎫 Support-Tickets")
     st.sidebar.markdown("---")
     
-    if st.sidebar.button("🚪 Abmelden", use_container_width=True):
+    if st.sidebar.button("🚪 Abmelden", width='stretch'):
         st.session_state.logged_in = False
         st.session_state.tickets = []
         st.rerun()
@@ -107,7 +107,7 @@ def main_app():
         with col2:
             created_time = st.time_input("Erstellungszeit")
         
-        if st.button("💾 Ticket speichern", use_container_width=True):
+        if st.button("💾 Ticket speichern", width='stretch'):
             if title and description:
                 created_datetime = datetime.combine(created_date, created_time).strftime("%Y-%m-%d %H:%M:%S")
                 new_ticket = {
@@ -182,7 +182,7 @@ def main_app():
                     "Anzahl": [responded_tickets, pending_tickets]
                 })
                 
-                pie_chart = alt.Chart(response_data).mark_pie().encode(
+                pie_chart = alt.Chart(response_data).mark_arc().encode(
                     theta="Anzahl",
                     color=alt.Color("Status:N", scale=alt.Scale(
                         domain=["Mit Antwort", "Ohne Antwort"],
@@ -349,10 +349,10 @@ def main_app():
                         with col2:
                             st.write("")  # spacing
                             st.write("")  # spacing
-                            if st.button("⏰ Antwort", key=f"response_{ticket['id']}", use_container_width=True):
+                            if st.button("⏰ Antwort", key=f"response_{ticket['id']}", width='stretch'):
                                 st.session_state[f"edit_response_{ticket['id']}"] = True
                             
-                            if st.button("🗑️ Löschen", key=f"delete_{ticket['id']}", use_container_width=True):
+                            if st.button("🗑️ Löschen", key=f"delete_{ticket['id']}", width='stretch'):
                                 st.session_state.tickets = [t for t in st.session_state.tickets if t["id"] != ticket["id"]]
                                 save_tickets(st.session_state.tickets)
                                 st.success("✅ Ticket erfolgreich gelöscht!")
@@ -367,7 +367,7 @@ def main_app():
                             col_save, col_cancel = st.columns(2)
                             
                             with col_save:
-                                if st.button("💾 Speichern", key=f"save_response_{ticket['id']}", use_container_width=True):
+                                if st.button("💾 Speichern", key=f"save_response_{ticket['id']}", width='stretch'):
                                     response_datetime = datetime.combine(response_date, response_time).strftime("%Y-%m-%d %H:%M:%S")
                                     for t in st.session_state.tickets:
                                         if t["id"] == ticket["id"]:
@@ -378,7 +378,7 @@ def main_app():
                                     st.rerun()
                             
                             with col_cancel:
-                                if st.button("✖️ Abbrechen", key=f"cancel_response_{ticket['id']}", use_container_width=True):
+                                if st.button("✖️ Abbrechen", key=f"cancel_response_{ticket['id']}", width='stretch'):
                                     st.session_state[f"edit_response_{ticket['id']}"] = False
                                     st.rerun()
             
@@ -432,7 +432,7 @@ def main_app():
                         with col2:
                             response_time = st.time_input("Antwortzeit", key=f"resp_time_list_{ticket_id}")
                         
-                        if st.button("💾 Antwortzeit speichern", use_container_width=True):
+                        if st.button("💾 Antwortzeit speichern", width='stretch'):
                             response_datetime = datetime.combine(response_date, response_time).strftime("%Y-%m-%d %H:%M:%S")
                             for t in st.session_state.tickets:
                                 if t["id"] == ticket_id:
