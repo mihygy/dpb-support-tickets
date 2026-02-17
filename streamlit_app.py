@@ -1,10 +1,12 @@
 import streamlit as st
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 import pandas as pd
 import altair as alt
+import io
+import csv
 
 # Page config
 st.set_page_config(
@@ -20,6 +22,13 @@ if "logged_in" not in st.session_state:
 
 if "tickets" not in st.session_state:
     st.session_state.tickets = []
+
+if "settings" not in st.session_state:
+    st.session_state.settings = {
+        "priorities": ["🟢 Niedrig", "🟡 Mittel", "🔴 Hoch"],
+        "categories": ["Bug", "Feature Request", "Support", "Dokumentation", "Sonstiges"],
+        "statuses": ["Offen", "In Bearbeitung", "Gelöst"]
+    }
 
 # File for persistent storage
 TICKETS_FILE = "tickets.json"
@@ -80,7 +89,7 @@ def main_app():
     st.markdown("<h1>🎫 Support-Tickets System</h1>", unsafe_allow_html=True)
     
     # Tabs for different sections
-    tab1, tab2 = st.tabs(["➕ Neues Ticket", "📋 Tickets"])
+    tab1, tab2, tab3, tab4 = st.tabs(["➕ Neues Ticket", "📋 Tickets", "📊 Erweiterte Stats", "⚙️ Einstellungen"])
     
     # Tab 1: Add new ticket
     with tab1:
@@ -90,13 +99,15 @@ def main_app():
         
         with col1:
             title = st.text_input("Titel", placeholder="Ticket-Titel")
-            priority = st.selectbox("Priorität", ["🟢 Niedrig", "🟡 Mittel", "🔴 Hoch"])
+            priority = st.selectbox("Priorität", st.session_state.settings["priorities"])
         
         with col2:
-            category = st.selectbox("Kategorie", ["Bug", "Feature Request", "Support", "Dokumentation", "Sonstiges"])
-            status = st.selectbox("Status", ["Offen", "In Bearbeitung", "Gelöst"])
+            category = st.selectbox("Kategorie", st.session_state.settings["categories"])
+            status = st.selectbox("Status", st.session_state.settings["statuses"])
         
         description = st.text_area("Beschreibung", placeholder="Geben Sie die Ticket-Beschreibung ein", height=150)
+        
+        tags_input = st.text_input("🏷️ Tags", placeholder="Tags durch Komma trennen (z.B. urgent, client, feature)")
         
         st.markdown("#### Ticket-Erstellungsdatum und -zeit")
         col1, col2 = st.columns(2)
@@ -110,6 +121,8 @@ def main_app():
         if st.button("💾 Ticket speichern", width='stretch'):
             if title and description:
                 created_datetime = datetime.combine(created_date, created_time).strftime("%Y-%m-%d %H:%M:%S")
+                tags = [tag.strip() for tag in tags_input.split(",")] if tags_input else []
+                
                 new_ticket = {
                     "id": len(st.session_state.tickets) + 1,
                     "title": title,
@@ -118,7 +131,9 @@ def main_app():
                     "priority": priority,
                     "status": status,
                     "created_at": created_datetime,
-                    "support_response_at": None
+                    "support_response_at": None,
+                    "tags": tags,
+                    "comments": []
                 }
                 st.session_state.tickets.append(new_ticket)
                 save_tickets(st.session_state.tickets)
@@ -298,14 +313,88 @@ def main_app():
             col1, col2, col3 = st.columns(3)
             
             with col1:
-                filter_status = st.selectbox("Nach Status filtern", ["Alle"] + ["Offen", "In Bearbeitung", "Gelöst"])
+                filter_status = st.selectbox("Nach Status filtern", ["Alle"] + st.session_state.settings["statuses"])
             with col2:
-                filter_priority = st.selectbox("Nach Priorität filtern", ["Alle", "🟢 Niedrig", "🟡 Mittel", "🔴 Hoch"])
+                filter_priority = st.selectbox("Nach Priorität filtern", ["Alle"] + st.session_state.settings["priorities"])
             with col3:
-                filter_category = st.selectbox("Nach Kategorie filtern", ["Alle"] + ["Bug", "Feature Request", "Support", "Dokumentation", "Sonstiges"])
+                filter_category = st.selectbox("Nach Kategorie filtern", ["Alle"] + st.session_state.settings["categories"])
+            
+            # Search and date filters
+            col4, col5, col6 = st.columns(3)
+            
+            with col4:
+                search_text = st.text_input("🔍 Suchen (Titel/Beschreibung)", placeholder="Suchtext eingeben")
+            
+            with col5:
+                date_filter_from = st.date_input("Von Datum", value=datetime.now() - timedelta(days=30))
+            
+            with col6:
+                date_filter_to = st.date_input("Bis Datum", value=datetime.now())
             
             # View mode toggle
             view_mode = st.radio("Ansicht", ["📇 Kartensicht", "📋 Listensicht"], horizontal=True)
+            
+            # Export options
+            col_exp1, col_exp2 = st.columns(2)
+            
+            with col_exp1:
+                if st.button("📥 Als CSV exportieren", width='stretch'):
+                    csv_buffer = io.StringIO()
+                    csv_writer = csv.writer(csv_buffer)
+                    csv_writer.writerow(["ID", "Titel", "Kategorie", "Priorität", "Status", "Erstellt", "Support antwortet", "Tags"])
+                    
+                    for ticket in filtered_tickets:
+                        csv_writer.writerow([
+                            ticket["id"],
+                            ticket["title"],
+                            ticket["category"],
+                            ticket["priority"],
+                            ticket["status"],
+                            ticket["created_at"],
+                            ticket.get("support_response_at", ""),
+                            ", ".join(ticket.get("tags", []))
+                        ])
+                    
+                    st.download_button(
+                        label="⬇️ CSV herunterladen",
+                        data=csv_buffer.getvalue(),
+                        file_name=f"tickets_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                        mime="text/csv"
+                    )
+            
+            with col_exp2:
+                if st.button("📋 Als Pandas DataFrame", width='stretch'):
+                    csv_buffer = io.StringIO()
+                    csv_writer = csv.writer(csv_buffer)
+                    csv_writer.writerow(["ID", "Titel", "Kategorie", "Priorität", "Status", "Erstellt", "Support antwortet", "Antwortzeit"])
+                    
+                    for ticket in filtered_tickets:
+                        response_time = ""
+                        if ticket.get("support_response_at"):
+                            try:
+                                created = datetime.strptime(ticket["created_at"], "%Y-%m-%d %H:%M:%S")
+                                responded = datetime.strptime(ticket["support_response_at"], "%Y-%m-%d %H:%M:%S")
+                                response_time = f"{(responded - created).total_seconds() / 3600:.2f}h"
+                            except:
+                                pass
+                        
+                        csv_writer.writerow([
+                            ticket["id"],
+                            ticket["title"],
+                            ticket["category"],
+                            ticket["priority"],
+                            ticket["status"],
+                            ticket["created_at"],
+                            ticket.get("support_response_at", ""),
+                            response_time
+                        ])
+                    
+                    st.download_button(
+                        label="⬇️ Detaillierter Report",
+                        data=csv_buffer.getvalue(),
+                        file_name=f"tickets_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                        mime="text/csv"
+                    )
             
             # Apply filters
             filtered_tickets = st.session_state.tickets
@@ -316,6 +405,16 @@ def main_app():
                 filtered_tickets = [t for t in filtered_tickets if t["priority"] == filter_priority]
             if filter_category != "Alle":
                 filtered_tickets = [t for t in filtered_tickets if t["category"] == filter_category]
+            
+            # Date filter
+            if date_filter_from and date_filter_to:
+                filtered_tickets = [t for t in filtered_tickets 
+                                  if date_filter_from.isoformat() <= t["created_at"][:10] <= date_filter_to.isoformat()]
+            
+            # Search filter
+            if search_text:
+                filtered_tickets = [t for t in filtered_tickets 
+                                  if search_text.lower() in t["title"].lower() or search_text.lower() in t["description"].lower()]
             
             st.markdown(f"**Angezeigte Tickets: {len(filtered_tickets)} / {len(st.session_state.tickets)}**")
             st.markdown("---")
@@ -332,6 +431,10 @@ def main_app():
                             st.write(f"**Kategorie:** {ticket['category']} | **Priorität:** {ticket['priority']} | **Status:** {ticket['status']}")
                             st.write(f"*Erstellt: {ticket['created_at']}*")
                             
+                            if ticket.get("tags"):
+                                tags_str = " ".join([f"🏷️ {tag}" for tag in ticket["tags"]])
+                                st.write(tags_str)
+                            
                             if ticket.get("support_response_at"):
                                 st.write(f"*Support antwortet: {ticket['support_response_at']}*")
                                 try:
@@ -345,6 +448,12 @@ def main_app():
                                 st.write("*Support antwortet: Noch nicht gesetzt*")
                             
                             st.write(f"**Beschreibung:** {ticket['description']}")
+                            
+                            # Comments section
+                            if ticket.get("comments"):
+                                st.markdown("**💬 Kommentare:**")
+                                for comment in ticket["comments"]:
+                                    st.write(f"- {comment}")
                         
                         with col2:
                             st.write("")  # spacing
@@ -364,6 +473,8 @@ def main_app():
                             response_date = st.date_input(f"Antwortdatum", key=f"resp_date_{ticket['id']}")
                             response_time = st.time_input(f"Antwortzeit", key=f"resp_time_{ticket['id']}")
                             
+                            comment_text = st.text_area(f"💬 Kommentar hinzufügen", key=f"comment_{ticket['id']}")
+                            
                             col_save, col_cancel = st.columns(2)
                             
                             with col_save:
@@ -372,6 +483,10 @@ def main_app():
                                     for t in st.session_state.tickets:
                                         if t["id"] == ticket["id"]:
                                             t["support_response_at"] = response_datetime
+                                            if comment_text and comment_text.strip():
+                                                if "comments" not in t:
+                                                    t["comments"] = []
+                                                t["comments"].append(f"[{datetime.now().strftime('%Y-%m-%d %H:%M')}] {comment_text}")
                                     save_tickets(st.session_state.tickets)
                                     st.session_state[f"edit_response_{ticket['id']}"] = False
                                     st.success("✅ Antwortzeit gespeichert!")
@@ -440,6 +555,144 @@ def main_app():
                             save_tickets(st.session_state.tickets)
                             st.success("✅ Antwortzeit gespeichert!")
                             st.rerun()
+        
+        # Tab 3: Advanced Statistics
+        with tab3:
+            st.markdown("### 📊 Erweiterte Statistiken")
+            
+            if not st.session_state.tickets:
+                st.info("Keine Daten für Statistiken verfügbar.")
+            else:
+                # Daily trends
+                st.markdown("#### 📈 Tägliche Trends")
+                
+                daily_data = {}
+                for ticket in st.session_state.tickets:
+                    date = ticket["created_at"][:10]
+                    daily_data[date] = daily_data.get(date, 0) + 1
+                
+                daily_df = pd.DataFrame({
+                    "Datum": list(daily_data.keys()),
+                    "Tickets": list(daily_data.values())
+                })
+                
+                if not daily_df.empty:
+                    line_chart = alt.Chart(daily_df).mark_line(point=True).encode(
+                        x="Datum:T",
+                        y="Tickets:Q",
+                        tooltip=["Datum", "Tickets"]
+                    ).properties(
+                        title="Tickets pro Tag",
+                        height=300
+                    )
+                    st.altair_chart(line_chart, use_container_width=True)
+                
+                # Response rate by priority
+                st.markdown("#### ⏱️ Durchschnittliche Antwortzeit pro Priorität")
+                
+                priority_response_times = {}
+                priority_counts = {}
+                
+                for ticket in st.session_state.tickets:
+                    if ticket.get("support_response_at") and ticket.get("created_at"):
+                        try:
+                            created = datetime.strptime(ticket["created_at"], "%Y-%m-%d %H:%M:%S")
+                            responded = datetime.strptime(ticket["support_response_at"], "%Y-%m-%d %H:%M:%S")
+                            response_hours = (responded - created).total_seconds() / 3600
+                            priority = ticket["priority"]
+                            
+                            if priority not in priority_response_times:
+                                priority_response_times[priority] = []
+                                priority_counts[priority] = 0
+                            
+                            priority_response_times[priority].append(response_hours)
+                            priority_counts[priority] += 1
+                        except:
+                            pass
+                
+                priority_avg_data = []
+                for priority, times in priority_response_times.items():
+                    avg_time = sum(times) / len(times) if times else 0
+                    priority_avg_data.append({
+                        "Priorität": priority,
+                        "Ø Antwortzeit (h)": avg_time
+                    })
+                
+                if priority_avg_data:
+                    priority_df = pd.DataFrame(priority_avg_data)
+                    priority_bar = alt.Chart(priority_df).mark_bar().encode(
+                        x="Priorität",
+                        y="Ø Antwortzeit (h)",
+                        color=alt.Color("Priorität", scale=alt.Scale(
+                            domain=st.session_state.settings["priorities"],
+                            range=["#4CAF50", "#FFC107", "#F44336"]
+                        ))
+                    ).properties(
+                        height=300
+                    )
+                    st.altair_chart(priority_bar, use_container_width=True)
+                
+                # Response rate by category
+                st.markdown("#### 📂 Response Rate nach Kategorie")
+                
+                category_stats = {}
+                for category in st.session_state.settings["categories"]:
+                    total = len([t for t in st.session_state.tickets if t["category"] == category])
+                    responded = len([t for t in st.session_state.tickets if t["category"] == category and t.get("support_response_at")])
+                    if total > 0:
+                        category_stats[category] = (responded / total) * 100
+                
+                if category_stats:
+                    category_df = pd.DataFrame({
+                        "Kategorie": list(category_stats.keys()),
+                        "Response Rate (%)": list(category_stats.values())
+                    })
+                    
+                    category_bar = alt.Chart(category_df).mark_bar().encode(
+                        x="Response Rate (%)",
+                        y="Kategorie",
+                        color="Response Rate (%)"
+                    ).properties(
+                        height=300
+                    )
+                    st.altair_chart(category_bar, use_container_width=True)
+        
+        # Tab 4: Settings
+        with tab4:
+            st.markdown("### ⚙️ Systemeinstellungen")
+            
+            st.markdown("#### Prioritäten verwalten")
+            priorities_str = ", ".join(st.session_state.settings["priorities"])
+            new_priorities = st.text_area("Prioritäten (durch Komma trennen)", value=priorities_str, height=100)
+            
+            st.markdown("#### Kategorien verwalten")
+            categories_str = ", ".join(st.session_state.settings["categories"])
+            new_categories = st.text_area("Kategorien (durch Komma trennen)", value=categories_str, height=100)
+            
+            st.markdown("#### Status verwalten")
+            statuses_str = ", ".join(st.session_state.settings["statuses"])
+            new_statuses = st.text_area("Status (durch Komma trennen)", value=statuses_str, height=100)
+            
+            if st.button("💾 Einstellungen speichern", width='stretch'):
+                st.session_state.settings["priorities"] = [p.strip() for p in new_priorities.split(",")]
+                st.session_state.settings["categories"] = [c.strip() for c in new_categories.split(",")]
+                st.session_state.settings["statuses"] = [s.strip() for s in new_statuses.split(",")]
+                
+                st.success("✅ Einstellungen gespeichert!")
+            
+            st.markdown("---")
+            st.markdown("#### 📊 Datenexport & Backup")
+            
+            if st.button("💾 Alle Tickets als JSON exportieren", width='stretch'):
+                json_data = json.dumps(st.session_state.tickets, ensure_ascii=False, indent=2)
+                st.download_button(
+                    label="⬇️ JSON herunterladen",
+                    data=json_data,
+                    file_name=f"tickets_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+                    mime="application/json"
+                )
+
+# Main logic
 
 # Main logic
 if st.session_state.logged_in:
