@@ -4,6 +4,7 @@ import os
 from datetime import datetime
 from pathlib import Path
 import pandas as pd
+import altair as alt
 
 # Page config
 st.set_page_config(
@@ -166,6 +167,130 @@ def main_app():
             
             with stats_col4:
                 st.metric("Ø Antwortzeit (Stunden)", f"{avg_response_time:.1f}")
+            
+            st.markdown("---")
+            
+            # Charts
+            st.markdown("#### 📈 Visualisierungen")
+            
+            chart_col1, chart_col2 = st.columns(2)
+            
+            # Chart 1: Response Status (Pie Chart)
+            with chart_col1:
+                response_data = pd.DataFrame({
+                    "Status": ["Mit Antwort", "Ohne Antwort"],
+                    "Anzahl": [responded_tickets, pending_tickets]
+                })
+                
+                pie_chart = alt.Chart(response_data).mark_pie().encode(
+                    theta="Anzahl",
+                    color=alt.Color("Status:N", scale=alt.Scale(
+                        domain=["Mit Antwort", "Ohne Antwort"],
+                        range=["#4CAF50", "#FF9800"]
+                    )),
+                    tooltip=["Status", "Anzahl"]
+                ).properties(
+                    title="Support-Antworten Status",
+                    height=300
+                )
+                st.altair_chart(pie_chart, use_container_width=True)
+            
+            # Chart 2: Tickets by Priority (Bar Chart)
+            with chart_col2:
+                priority_counts = {}
+                for ticket in st.session_state.tickets:
+                    priority = ticket["priority"]
+                    priority_counts[priority] = priority_counts.get(priority, 0) + 1
+                
+                priority_data = pd.DataFrame({
+                    "Priorität": list(priority_counts.keys()),
+                    "Anzahl": list(priority_counts.values())
+                })
+                
+                priority_chart = alt.Chart(priority_data).mark_bar().encode(
+                    x=alt.X("Priorität:N"),
+                    y=alt.Y("Anzahl:Q"),
+                    color=alt.Color("Priorität:N", scale=alt.Scale(
+                        domain=["🟢 Niedrig", "🟡 Mittel", "🔴 Hoch"],
+                        range=["#4CAF50", "#FFC107", "#F44336"]
+                    )),
+                    tooltip=["Priorität", "Anzahl"]
+                ).properties(
+                    title="Tickets nach Priorität",
+                    height=300
+                )
+                st.altair_chart(priority_chart, use_container_width=True)
+            
+            # Chart 3: Tickets by Status (Bar Chart)
+            chart_col3, chart_col4 = st.columns(2)
+            
+            with chart_col3:
+                status_counts = {}
+                for ticket in st.session_state.tickets:
+                    status = ticket["status"]
+                    status_counts[status] = status_counts.get(status, 0) + 1
+                
+                status_data = pd.DataFrame({
+                    "Status": list(status_counts.keys()),
+                    "Anzahl": list(status_counts.values())
+                })
+                
+                status_chart = alt.Chart(status_data).mark_bar().encode(
+                    x=alt.X("Status:N"),
+                    y=alt.Y("Anzahl:Q"),
+                    color=alt.Color("Status:N", scale=alt.Scale(
+                        domain=["Offen", "In Bearbeitung", "Gelöst"],
+                        range=["#FF5722", "#2196F3", "#4CAF50"]
+                    )),
+                    tooltip=["Status", "Anzahl"]
+                ).properties(
+                    title="Tickets nach Status",
+                    height=300
+                )
+                st.altair_chart(status_chart, use_container_width=True)
+            
+            # Chart 4: Tickets by Category (Bar Chart)
+            with chart_col4:
+                category_counts = {}
+                for ticket in st.session_state.tickets:
+                    category = ticket["category"]
+                    category_counts[category] = category_counts.get(category, 0) + 1
+                
+                category_data = pd.DataFrame({
+                    "Kategorie": list(category_counts.keys()),
+                    "Anzahl": list(category_counts.values())
+                })
+                
+                category_chart = alt.Chart(category_data).mark_bar().encode(
+                    x=alt.X("Anzahl:Q"),
+                    y=alt.Y("Kategorie:N"),
+                    color=alt.Color("Kategorie:N"),
+                    tooltip=["Kategorie", "Anzahl"]
+                ).properties(
+                    title="Tickets nach Kategorie",
+                    height=300
+                )
+                st.altair_chart(category_chart, use_container_width=True)
+            
+            # Chart 5: Response Time Distribution
+            if response_times:
+                st.markdown("---")
+                
+                response_time_data = pd.DataFrame({
+                    "Antwortzeit (Stunden)": response_times
+                })
+                
+                histogram = alt.Chart(response_time_data).mark_bar().encode(
+                    alt.X("Antwortzeit (Stunden):Q", bin=alt.Bin(maxbins=10)),
+                    y="count()",
+                    color="count()",
+                    tooltip=["count()"]
+                ).properties(
+                    title="Verteilung der Support-Antwortzeiten",
+                    height=300
+                )
+                
+                st.altair_chart(histogram, use_container_width=True)
             
             st.markdown("---")
             
