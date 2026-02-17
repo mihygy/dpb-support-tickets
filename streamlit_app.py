@@ -181,7 +181,7 @@ def main_app():
             response_times = []
             for ticket in st.session_state.tickets:
                 if ticket.get("exchanges"):
-                    for exchange in ticket["exchanges"]:
+                    for exchange in ticket.get("exchanges", []):
                         if exchange.get("response_at") and exchange.get("question_at"):
                             try:
                                 created = datetime.strptime(exchange["question_at"], "%Y-%m-%d %H:%M:%S")
@@ -455,7 +455,7 @@ def main_app():
                             # Display exchanges
                             if ticket.get("exchanges"):
                                 st.markdown("**💬 Konversationen:**")
-                                for idx, exchange in enumerate(ticket["exchanges"], 1):
+                                for idx, exchange in enumerate(ticket.get("exchanges", []), 1):
                                     st.write(f"**Frage {idx}:** {exchange.get('question_text', '')}")
                                     if exchange.get("response_at"):
                                         st.write(f"*Beantwortet am {exchange['response_at']}:*")
@@ -513,6 +513,8 @@ def main_app():
                                         response_datetime = datetime.combine(response_date, response_time).strftime("%Y-%m-%d %H:%M:%S")
                                         for t in st.session_state.tickets:
                                             if t["id"] == ticket["id"]:
+                                                if "exchanges" not in t:
+                                                    t["exchanges"] = []
                                                 t["exchanges"][last_exchange_idx]["response_at"] = response_datetime
                                                 t["exchanges"][last_exchange_idx]["response_text"] = response_text
                                                 t["support_response_at"] = response_datetime
@@ -534,6 +536,8 @@ def main_app():
                                     if new_question.strip():
                                         for t in st.session_state.tickets:
                                             if t["id"] == ticket["id"]:
+                                                if "exchanges" not in t:
+                                                    t["exchanges"] = []
                                                 t["exchanges"].append({
                                                     "question_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                                                     "question_text": new_question,
@@ -552,6 +556,8 @@ def main_app():
                                     if new_question.strip():
                                         for t in st.session_state.tickets:
                                             if t["id"] == ticket["id"]:
+                                                if "exchanges" not in t:
+                                                    t["exchanges"] = []
                                                 t["exchanges"].append({
                                                     "question_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                                                     "question_text": new_question,
@@ -575,7 +581,7 @@ def main_app():
                     last_response_hours = ""
                     
                     if ticket.get("exchanges"):
-                        for exchange in reversed(ticket["exchanges"]):
+                        for exchange in reversed(ticket.get("exchanges", [])):
                             if exchange.get("response_at"):
                                 last_response = exchange["response_at"]
                                 try:
@@ -775,7 +781,7 @@ def main_app():
                 
                 for ticket in st.session_state.tickets:
                     if ticket.get("exchanges"):
-                        for exchange in ticket["exchanges"]:
+                        for exchange in ticket.get("exchanges", []):
                             if exchange.get("response_at") and exchange.get("question_at"):
                                 try:
                                     created = datetime.strptime(exchange["question_at"], "%Y-%m-%d %H:%M:%S")
