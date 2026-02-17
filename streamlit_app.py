@@ -133,7 +133,15 @@ def main_app():
                     "created_at": created_datetime,
                     "support_response_at": None,
                     "tags": tags,
-                    "comments": []
+                    "comments": [],
+                    "exchanges": [
+                        {
+                            "question_at": created_datetime,
+                            "question_text": description,
+                            "response_at": None,
+                            "response_text": ""
+                        }
+                    ]
                 }
                 st.session_state.tickets.append(new_ticket)
                 save_tickets(st.session_state.tickets)
@@ -169,14 +177,16 @@ def main_app():
             # Calculate average response time
             response_times = []
             for ticket in st.session_state.tickets:
-                if ticket.get("support_response_at") and ticket.get("created_at"):
-                    try:
-                        created = datetime.strptime(ticket["created_at"], "%Y-%m-%d %H:%M:%S")
-                        responded = datetime.strptime(ticket["support_response_at"], "%Y-%m-%d %H:%M:%S")
-                        delta = responded - created
-                        response_times.append(delta.total_seconds() / 3600)  # in hours
-                    except:
-                        pass
+                if ticket.get("exchanges"):
+                    for exchange in ticket["exchanges"]:
+                        if exchange.get("response_at") and exchange.get("question_at"):
+                            try:
+                                created = datetime.strptime(exchange["question_at"], "%Y-%m-%d %H:%M:%S")
+                                responded = datetime.strptime(exchange["response_at"], "%Y-%m-%d %H:%M:%S")
+                                delta = responded - created
+                                response_times.append(delta.total_seconds() / 3600)  # in hours
+                            except:
+                                pass
             
             avg_response_time = sum(response_times) / len(response_times) if response_times else 0
             
@@ -435,23 +445,28 @@ def main_app():
                                 tags_str = " ".join([f"🏷️ {tag}" for tag in ticket["tags"]])
                                 st.write(tags_str)
                             
-                            if ticket.get("support_response_at"):
-                                st.write(f"*Support antwortet: {ticket['support_response_at']}*")
-                                try:
-                                    created = datetime.strptime(ticket["created_at"], "%Y-%m-%d %H:%M:%S")
-                                    responded = datetime.strptime(ticket["support_response_at"], "%Y-%m-%d %H:%M:%S")
-                                    response_hours = (responded - created).total_seconds() / 3600
-                                    st.write(f"⏱️ **Antwortzeit:** {response_hours:.1f} Stunden")
-                                except:
-                                    pass
-                            else:
-                                st.write("*Support antwortet: Noch nicht gesetzt*")
-                            
-                            st.write(f"**Beschreibung:** {ticket['description']}")
+                            # Display exchanges
+                            if ticket.get("exchanges"):
+                                st.markdown("**💬 Konversationen:**")
+                                for idx, exchange in enumerate(ticket["exchanges"], 1):
+                                    st.write(f"**Frage {idx}:** {exchange.get('question_text', '')}")
+                                    if exchange.get("response_at"):
+                                        st.write(f"*Beantwortet am {exchange['response_at']}:*")
+                                        st.write(f"> {exchange.get('response_text', '')}")
+                                        try:
+                                            q_time = datetime.strptime(exchange["question_at"], "%Y-%m-%d %H:%M:%S")
+                                            r_time = datetime.strptime(exchange["response_at"], "%Y-%m-%d %H:%M:%S")
+                                            hours = (r_time - q_time).total_seconds() / 3600
+                                            st.write(f"⏱️ Antwortzeit: {hours:.1f}h")
+                                        except:
+                                            pass
+                                    else:
+                                        st.write("*Noch keine Antwort*")
+                                    st.divider()
                             
                             # Comments section
                             if ticket.get("comments"):
-                                st.markdown("**💬 Kommentare:**")
+                                st.markdown("**📝 Kommentare:**")
                                 for comment in ticket["comments"]:
                                     st.write(f"- {comment}")
                         
@@ -469,49 +484,100 @@ def main_app():
                     
                     # Edit response time
                     if st.session_state.get(f"edit_response_{ticket['id']}"):
-                        with st.expander(f"📝 Support-Antwort für Ticket {ticket['id']} bearbeiten", expanded=True):
-                            response_date = st.date_input(f"Antwortdatum", key=f"resp_date_{ticket['id']}")
-                            response_time = st.time_input(f"Antwortzeit", key=f"resp_time_{ticket['id']}")
+                        with st.expander(f"📝 Antwort für Ticket {ticket['id']} bearbeiten", expanded=True):
+                            # Find last unanswered exchange
+                            last_exchange_idx = -1
+                            for idx, exchange in enumerate(ticket.get("exchanges", [])):
+                                if not exchange.get("response_at"):
+                                    last_exchange_idx = idx
                             
-                            comment_text = st.text_area(f"💬 Kommentar hinzufügen", key=f"comment_{ticket['id']}")
-                            
-                            col_save, col_cancel = st.columns(2)
-                            
-                            with col_save:
-                                if st.button("💾 Speichern", key=f"save_response_{ticket['id']}", width='stretch'):
-                                    response_datetime = datetime.combine(response_date, response_time).strftime("%Y-%m-%d %H:%M:%S")
-                                    for t in st.session_state.tickets:
-                                        if t["id"] == ticket["id"]:
-                                            t["support_response_at"] = response_datetime
-                                            if comment_text and comment_text.strip():
-                                                if "comments" not in t:
-                                                    t["comments"] = []
-                                                t["comments"].append(f"[{datetime.now().strftime('%Y-%m-%d %H:%M')}] {comment_text}")
-                                    save_tickets(st.session_state.tickets)
-                                    st.session_state[f"edit_response_{ticket['id']}"] = False
-                                    st.success("✅ Antwortzeit gespeichert!")
-                                    st.rerun()
-                            
-                            with col_cancel:
-                                if st.button("✖️ Abbrechen", key=f"cancel_response_{ticket['id']}", width='stretch'):
-                                    st.session_state[f"edit_response_{ticket['id']}"] = False
-                                    st.rerun()
+                            if last_exchange_idx >= 0:
+                                st.markdown(f"#### Antwort auf Frage {last_exchange_idx + 1}")
+                                st.write(f"**Frage:** {ticket['exchanges'][last_exchange_idx].get('question_text', '')}")
+                                
+                                response_date = st.date_input(f"Antwortdatum", key=f"resp_date_{ticket['id']}")
+                                response_time = st.time_input(f"Antwortzeit", key=f"resp_time_{ticket['id']}")
+                                response_text = st.text_area("Antwort", placeholder="Geben Sie die Antwort ein", key=f"resp_text_{ticket['id']}", height=150)
+                                
+                                col_save, col_cancel = st.columns(2)
+                                
+                                with col_save:
+                                    if st.button("💾 Antwort speichern", key=f"save_response_{ticket['id']}", width='stretch'):
+                                        response_datetime = datetime.combine(response_date, response_time).strftime("%Y-%m-%d %H:%M:%S")
+                                        for t in st.session_state.tickets:
+                                            if t["id"] == ticket["id"]:
+                                                t["exchanges"][last_exchange_idx]["response_at"] = response_datetime
+                                                t["exchanges"][last_exchange_idx]["response_text"] = response_text
+                                                t["support_response_at"] = response_datetime
+                                        save_tickets(st.session_state.tickets)
+                                        st.session_state[f"edit_response_{ticket['id']}"] = False
+                                        st.success("✅ Antwort gespeichert!")
+                                        st.rerun()
+                                
+                                with col_cancel:
+                                    if st.button("✖️ Abbrechen", key=f"cancel_response_{ticket['id']}", width='stretch'):
+                                        st.session_state[f"edit_response_{ticket['id']}"] = False
+                                        st.rerun()
+                                
+                                st.markdown("---")
+                                st.markdown("#### 📌 Neue Frage zur Konversation hinzufügen")
+                                new_question = st.text_area("Neue Frage", placeholder="Neue Frage stellen", key=f"new_question_{ticket['id']}", height=100)
+                                
+                                if st.button("➕ Neue Frage hinzufügen", key=f"add_question_{ticket['id']}", width='stretch'):
+                                    if new_question.strip():
+                                        for t in st.session_state.tickets:
+                                            if t["id"] == ticket["id"]:
+                                                t["exchanges"].append({
+                                                    "question_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                                                    "question_text": new_question,
+                                                    "response_at": None,
+                                                    "response_text": ""
+                                                })
+                                        save_tickets(st.session_state.tickets)
+                                        st.success("✅ Neue Frage hinzugefügt! Warten auf Antwort...")
+                                        st.rerun()
+                            else:
+                                st.success("✅ Alle Fragen wurden bereits beantwortet!")
+                                st.markdown("#### 📌 Neue Frage zur Konversation hinzufügen")
+                                new_question = st.text_area("Neue Frage", placeholder="Neue Frage stellen", key=f"new_question_{ticket['id']}", height=100)
+                                
+                                if st.button("➕ Neue Frage hinzufügen", key=f"add_question_{ticket['id']}", width='stretch'):
+                                    if new_question.strip():
+                                        for t in st.session_state.tickets:
+                                            if t["id"] == ticket["id"]:
+                                                t["exchanges"].append({
+                                                    "question_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                                                    "question_text": new_question,
+                                                    "response_at": None,
+                                                    "response_text": ""
+                                                })
+                                        save_tickets(st.session_state.tickets)
+                                        st.success("✅ Neue Frage hinzugefügt!")
+                                        st.rerun()
             
             else:  # List view
                 # Create DataFrame for table view
                 table_data = []
                 for ticket in filtered_tickets:
-                    response_time = "Nicht gesetzt"
-                    response_hours = ""
+                    # Count exchanges
+                    total_exchanges = len(ticket.get("exchanges", []))
+                    answered_exchanges = len([e for e in ticket.get("exchanges", []) if e.get("response_at")])
                     
-                    if ticket.get("support_response_at"):
-                        try:
-                            created = datetime.strptime(ticket["created_at"], "%Y-%m-%d %H:%M:%S")
-                            responded = datetime.strptime(ticket["support_response_at"], "%Y-%m-%d %H:%M:%S")
-                            response_time = ticket["support_response_at"]
-                            response_hours = f"{(responded - created).total_seconds() / 3600:.1f}h"
-                        except:
-                            response_time = ticket.get("support_response_at", "Fehler")
+                    # Last response
+                    last_response = ""
+                    last_response_hours = ""
+                    
+                    if ticket.get("exchanges"):
+                        for exchange in reversed(ticket["exchanges"]):
+                            if exchange.get("response_at"):
+                                last_response = exchange["response_at"]
+                                try:
+                                    q_time = datetime.strptime(exchange["question_at"], "%Y-%m-%d %H:%M:%S")
+                                    r_time = datetime.strptime(exchange["response_at"], "%Y-%m-%d %H:%M:%S")
+                                    last_response_hours = f"{(r_time - q_time).total_seconds() / 3600:.1f}h"
+                                except:
+                                    pass
+                                break
                     
                     table_data.append({
                         "ID": ticket["id"],
@@ -519,9 +585,10 @@ def main_app():
                         "Kategorie": ticket["category"],
                         "Priorität": ticket["priority"],
                         "Status": ticket["status"],
+                        "Fragen": f"{answered_exchanges}/{total_exchanges}",
                         "Erstellt": ticket["created_at"],
-                        "Support antwortet": response_time,
-                        "Antwortzeit": response_hours
+                        "Letzte Antwort": last_response if last_response else "Keine",
+                        "Antwortzeit": last_response_hours
                     })
                 
                 df = pd.DataFrame(table_data)
@@ -563,6 +630,26 @@ def main_app():
             if not st.session_state.tickets:
                 st.info("Keine Daten für Statistiken verfügbar.")
             else:
+                # Gesamtstatistiken
+                st.markdown("#### 📌 Gesamt-Gesprächsmetriken")
+                
+                total_questions = sum(len(t.get("exchanges", [])) for t in st.session_state.tickets)
+                total_answered = sum(len([e for e in t.get("exchanges", []) if e.get("response_at")]) for t in st.session_state.tickets)
+                
+                metric_col1, metric_col2, metric_col3 = st.columns(3)
+                
+                with metric_col1:
+                    st.metric("Gesamt Fragen", total_questions)
+                
+                with metric_col2:
+                    st.metric("Beantwortete Fragen", total_answered)
+                
+                with metric_col3:
+                    pending_q = total_questions - total_answered
+                    st.metric("Ausstehend", pending_q)
+                
+                st.markdown("---")
+                
                 # Daily trends
                 st.markdown("#### 📈 Tägliche Trends")
                 
@@ -594,21 +681,23 @@ def main_app():
                 priority_counts = {}
                 
                 for ticket in st.session_state.tickets:
-                    if ticket.get("support_response_at") and ticket.get("created_at"):
-                        try:
-                            created = datetime.strptime(ticket["created_at"], "%Y-%m-%d %H:%M:%S")
-                            responded = datetime.strptime(ticket["support_response_at"], "%Y-%m-%d %H:%M:%S")
-                            response_hours = (responded - created).total_seconds() / 3600
-                            priority = ticket["priority"]
-                            
-                            if priority not in priority_response_times:
-                                priority_response_times[priority] = []
-                                priority_counts[priority] = 0
-                            
-                            priority_response_times[priority].append(response_hours)
-                            priority_counts[priority] += 1
-                        except:
-                            pass
+                    if ticket.get("exchanges"):
+                        for exchange in ticket["exchanges"]:
+                            if exchange.get("response_at") and exchange.get("question_at"):
+                                try:
+                                    created = datetime.strptime(exchange["question_at"], "%Y-%m-%d %H:%M:%S")
+                                    responded = datetime.strptime(exchange["response_at"], "%Y-%m-%d %H:%M:%S")
+                                    response_hours = (responded - created).total_seconds() / 3600
+                                    priority = ticket["priority"]
+                                    
+                                    if priority not in priority_response_times:
+                                        priority_response_times[priority] = []
+                                        priority_counts[priority] = 0
+                                    
+                                    priority_response_times[priority].append(response_hours)
+                                    priority_counts[priority] += 1
+                                except:
+                                    pass
                 
                 priority_avg_data = []
                 for priority, times in priority_response_times.items():
@@ -637,10 +726,12 @@ def main_app():
                 
                 category_stats = {}
                 for category in st.session_state.settings["categories"]:
-                    total = len([t for t in st.session_state.tickets if t["category"] == category])
-                    responded = len([t for t in st.session_state.tickets if t["category"] == category and t.get("support_response_at")])
-                    if total > 0:
-                        category_stats[category] = (responded / total) * 100
+                    category_tickets = [t for t in st.session_state.tickets if t["category"] == category]
+                    if category_tickets:
+                        total_exchanges = sum(len(t.get("exchanges", [])) for t in category_tickets)
+                        answered_exchanges = sum(len([e for e in t.get("exchanges", []) if e.get("response_at")]) for t in category_tickets)
+                        if total_exchanges > 0:
+                            category_stats[category] = (answered_exchanges / total_exchanges) * 100
                 
                 if category_stats:
                     category_df = pd.DataFrame({
