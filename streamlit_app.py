@@ -210,13 +210,13 @@ def main_app():
                     "Anzahl": [answered_exchanges, pending_exchanges]
                 })
                 
-                pie_chart = alt.Chart(response_data).mark_arc().encode(
-                    theta="Anzahl",
+                pie_chart = alt.Chart(response_data).mark_arc(innerRadius=0).encode(
+                    theta="Anzahl:Q",
                     color=alt.Color("Status:N", scale=alt.Scale(
                         domain=["Beantwortet", "Ausstehend"],
                         range=["#4CAF50", "#FF9800"]
                     )),
-                    tooltip=["Status", "Anzahl"]
+                    tooltip=["Status:N", "Anzahl:Q"]
                 ).properties(
                     title="Fragen-Antwort Status (Exchange-basiert)",
                     height=300
@@ -668,13 +668,13 @@ def main_app():
                         "Anzahl": [total_all_answered, pending_all]
                     })
                     
-                    dist_pie = alt.Chart(response_dist).mark_arc().encode(
-                        theta="Anzahl",
+                    dist_pie = alt.Chart(response_dist).mark_arc(innerRadius=0).encode(
+                        theta="Anzahl:Q",
                         color=alt.Color("Status:N", scale=alt.Scale(
                             domain=["Beantwortet", "Ausstehend"],
                             range=["#4CAF50", "#FF9800"]
                         )),
-                        tooltip=["Status", "Anzahl"]
+                        tooltip=["Status:N", "Anzahl:Q"]
                     ).properties(
                         title="Alle Fragen Status",
                         height=300
@@ -691,46 +691,84 @@ def main_app():
                             date = exchange["question_at"][:10]
                             daily_questions[date] = daily_questions.get(date, 0) + 1
                     
-                    daily_q_df = pd.DataFrame({
-                        "Datum": list(daily_questions.keys()),
-                        "Fragen": list(daily_questions.values())
-                    })
-                    
-                    if not daily_q_df.empty:
+                    if daily_questions:
+                        daily_q_df = pd.DataFrame({
+                            "Datum": pd.to_datetime(list(daily_questions.keys())),
+                            "Fragen": list(daily_questions.values())
+                        }).sort_values("Datum")
+                        
                         line_chart = alt.Chart(daily_q_df).mark_line(point=True).encode(
-                            x="Datum:T",
-                            y="Fragen:Q",
-                            tooltip=["Datum", "Fragen"]
+                            x=alt.X("Datum:T", title="Datum"),
+                            y=alt.Y("Fragen:Q", title="Anzahl Fragen"),
+                            tooltip=["Datum:T", "Fragen:Q"]
                         ).properties(
                             title="Fragen pro Tag",
                             height=300
                         )
                         st.altair_chart(line_chart, use_container_width=True)
+                    else:
+                        st.info("Keine täglichen Daten verfügbar")
+                
+                st.markdown("---")
+                
+                st.markdown("#### 📆 Tägliche Tickets und Fragen")
+                
+                col_trend1, col_trend2 = st.columns(2)
+                
+                with col_trend1:
+                    daily_data = {}
+                    for ticket in st.session_state.tickets:
+                        date = ticket["created_at"][:10]
+                        daily_data[date] = daily_data.get(date, 0) + 1
+                    
+                    if daily_data:
+                        daily_df = pd.DataFrame({
+                            "Datum": pd.to_datetime(list(daily_data.keys())),
+                            "Tickets": list(daily_data.values())
+                        }).sort_values("Datum")
+                        
+                        line_chart = alt.Chart(daily_df).mark_line(point=True).encode(
+                            x=alt.X("Datum:T", title="Datum"),
+                            y=alt.Y("Tickets:Q", title="Anzahl Tickets"),
+                            tooltip=["Datum:T", "Tickets:Q"]
+                        ).properties(
+                            title="Tickets pro Tag",
+                            height=300
+                        )
+                        st.altair_chart(line_chart, use_container_width=True)
+                    else:
+                        st.info("Keine Ticket-Daten verfügbar")
+                
+                with col_trend2:
+                    st.markdown("")
+                    st.markdown("")
+                    daily_questions2 = {}
+                    for ticket in st.session_state.tickets:
+                        for exchange in ticket.get("exchanges", []):
+                            date = exchange["question_at"][:10]
+                            daily_questions2[date] = daily_questions2.get(date, 0) + 1
+                    
+                    if daily_questions2:
+                        daily_q_df2 = pd.DataFrame({
+                            "Datum": pd.to_datetime(list(daily_questions2.keys())),
+                            "Fragen": list(daily_questions2.values())
+                        }).sort_values("Datum")
+                        
+                        q_line_chart = alt.Chart(daily_q_df2).mark_line(point=True, color="#FF6B6B").encode(
+                            x=alt.X("Datum:T", title="Datum"),
+                            y=alt.Y("Fragen:Q", title="Anzahl Fragen"),
+                            tooltip=["Datum:T", "Fragen:Q"]
+                        ).properties(
+                            title="Fragen pro Tag",
+                            height=300
+                        )
+                        st.altair_chart(q_line_chart, use_container_width=True)
+                    else:
+                        st.info("Keine Fragen-Daten verfügbar")
                 
                 st.markdown("---")
                 
                 st.markdown("#### ⏱️ Durchschnittliche Antwortzeit pro Priorität (Exchange-basiert)")
-                
-                daily_data = {}
-                for ticket in st.session_state.tickets:
-                    date = ticket["created_at"][:10]
-                    daily_data[date] = daily_data.get(date, 0) + 1
-                
-                daily_df = pd.DataFrame({
-                    "Datum": list(daily_data.keys()),
-                    "Tickets": list(daily_data.values())
-                })
-                
-                if not daily_df.empty:
-                    line_chart = alt.Chart(daily_df).mark_line(point=True).encode(
-                        x="Datum:T",
-                        y="Tickets:Q",
-                        tooltip=["Datum", "Tickets"]
-                    ).properties(
-                        title="Tickets pro Tag",
-                        height=300
-                    )
-                    st.altair_chart(line_chart, use_container_width=True)
                 
                 priority_response_times = {}
                 priority_counts = {}
@@ -765,9 +803,9 @@ def main_app():
                 if priority_avg_data:
                     priority_df = pd.DataFrame(priority_avg_data)
                     priority_bar = alt.Chart(priority_df).mark_bar().encode(
-                        x="Priorität",
-                        y="Ø Antwortzeit (h)",
-                        color=alt.Color("Priorität", scale=alt.Scale(
+                        x=alt.X("Priorität:N", title="Priorität"),
+                        y=alt.Y("Ø Antwortzeit (h):Q", title="Stunden"),
+                        color=alt.Color("Priorität:N", scale=alt.Scale(
                             domain=st.session_state.settings["priorities"],
                             range=["#4CAF50", "#FFC107", "#F44336"]
                         ))
@@ -775,6 +813,8 @@ def main_app():
                         height=300
                     )
                     st.altair_chart(priority_bar, use_container_width=True)
+                else:
+                    st.info("Keine Response-Time-Daten verfügbar")
                 
                 # Response rate by category
                 st.markdown("#### 📂 Response Rate nach Kategorie (Exchange-basiert)")
@@ -795,13 +835,15 @@ def main_app():
                     })
                     
                     category_bar = alt.Chart(category_df).mark_bar().encode(
-                        x="Response Rate (%)",
-                        y="Kategorie",
-                        color="Response Rate (%)"
+                        x=alt.X("Response Rate (%):Q", title="Response Rate (%)"),
+                        y=alt.Y("Kategorie:N", title="Kategorie"),
+                        color=alt.Color("Response Rate (%):Q", scale=alt.Scale(scheme="greens"))
                     ).properties(
                         height=300
                     )
                     st.altair_chart(category_bar, use_container_width=True)
+                else:
+                    st.info("Keine Kategorie-Daten verfügbar")
         
         # Tab 4: Settings
         with tab4:
